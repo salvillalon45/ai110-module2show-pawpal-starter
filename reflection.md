@@ -4,6 +4,12 @@
 
 **a. Initial design**
 
+The core actions a user can take in natural language:
+- A user can add their owner and pet info and track care tasks (walks, feeding, meds, enrichment, grooming, etc.), including adding and editing them.
+- A user can enter their constraints and priorities, such as available time, priority in their tasks, and owner preferences to guide the daily plan.
+- A user can view a daily plan based on their constraints and priorities. They will understand why this plan was created for them.
+
+**b. UML and Classes**
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
 
