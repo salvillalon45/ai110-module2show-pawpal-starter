@@ -132,10 +132,17 @@ Once I started this phase, the assigment suggested some edits that we should. I 
 For the Pet class I added a new field called species since I noticed the UI had it.
 
 ### After starting Phase 4: Algorithmic Layer
-- For the `Scheduler` class I added a new method called `sort_by_time` that return incomplete tasks ordered by preferred time block, then highest priority, then shortest duration first. 
-- For the `Scheduler` class I added a new method called `filter_tasks` that returns the owner's tasks matching the given filters.
-- For the `Scheduler` class I added new methods called `completeTask()`, `markTaskComplete()`, `nextOccurrence()` 
-- `Task` now has `startTime` and `startMinutes()`
+- For the `Scheduler` class I added:
+    - `sort_by_time`
+    - `filter_tasks`
+    - `markTaskComplete()` 
+    - `detectConflicts()`
+- For the `Task` class I added:
+    - `markComplete()`
+    - `nextOccurrence()`
+    - `startMinutes()`
+- For the `Pet` class I added:
+    - `completeTask()`
 ---
 
 ## 2. Scheduling Logic and Tradeoffs
@@ -148,7 +155,25 @@ For the Pet class I added a new field called species since I noticed the UI had 
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
+
+    - **Conflict detection only warns, and only checks tasks that have a `start_time`.**
+
+    - `Scheduler.detect_conflicts()` 
+        - returns a list of warning messages instead of raising an error or moving tasks around on its own. 
+        - It flags two tasks as a conflict when their time ranges overlap (each one starts before the other ends) on the same due date, whether they belong to the same pet or different pets.
+        - Back-to-back tasks (one ends at 08:30, the next starts at 08:30) are not flagged. 
+        - It compares every pair of tasks (using `combinations()`), which gets slower as the task list grows. 
+        - It also skips tasks that have no `start_time`, so tasks that `generate_daily_plan` only places into a time block are never checked against each other.
+
 - Why is that tradeoff reasonable for this scenario?
+
+    - This is reasonable for this scenario because an owner only has a handful of tasks per day, so comparing every pair is fast and easy to read. 
+
+    - A warning lets the owner decide how to fix it, and the program never crashes. The downside is that the scheduler will not fix a conflict for the owner, and a conflict between two tasks without a `start_time` can go unnoticed.
+
+**Code style preference saved for the AI assistant.**
+
+While working on this step I told Claude Code that I prefer regular multi-line `for` loops over one-line loops, and multi-line conditionals over one-line conditionals, because the one-line versions are harder for me to read. Claude Code updated its memory files, `MEMORY.md` and `feedback_code-style-loops-conditionals.md`, to record this, so new code it writes for this project follows that style.
 
 ---
 
