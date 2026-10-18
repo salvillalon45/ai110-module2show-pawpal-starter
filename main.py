@@ -156,3 +156,33 @@ show("Filter: incomplete tasks", demo.filter_tasks(completed=False))
 show("Filter: completed tasks", demo.filter_tasks(completed=True))
 show("Filter: Whiskers' tasks", demo.filter_tasks(pet_name="Whiskers"))
 show("Filter: Mochi's incomplete tasks", demo.filter_tasks(pet_name="Mochi", completed=False))
+
+
+# --- Recurring tasks demo ---
+# Completing a daily/weekly task creates the next occurrence; a one-time task does not.
+from datetime import date
+
+pip = Pet("Pip", "dog")
+pip.create_task(Task("walk", "walk Pip", 20, Priority.HIGH, "morning", Frequency.DAILY, due_date=date(2026, 10, 18)))
+pip.create_task(Task("bath", "bathe Pip", 30, Priority.MEDIUM, "evening", Frequency.WEEKLY, due_date=date(2026, 10, 18)))
+pip.create_task(Task("vet visit", "annual checkup", 45, Priority.HIGH, "afternoon", Frequency.ONCE, due_date=date(2026, 10, 18)))
+
+recurring = Scheduler(Owner("Alex", [pip], {"morning": 60, "afternoon": 60, "evening": 60}))
+
+
+def show_with_dates(title, tasks):
+    print(f"\n{title}")
+    for t in tasks:
+        status = "done" if t.completion_status else "todo"
+        print(f"  - [{status}] {t.name} ({t.frequency.value}) due {t.due_date}")
+
+
+show_with_dates("Before completing anything:", pip.tasks)
+for name in ("walk", "bath", "vet visit"):
+    new_task = recurring.mark_task_complete("Pip", name)
+    if new_task:
+        print(f"\nCompleted {name!r} -> next one created, due {new_task.due_date}")
+    else:
+        print(f"\nCompleted {name!r} -> no next occurrence ({'one-time task'})")
+show_with_dates("After completing all three:", pip.tasks)
+show_with_dates("Still to do (incomplete):", recurring.filter_tasks(completed=False))

@@ -16,7 +16,9 @@ classDiagram
         +Frequency frequency
         +bool completionStatus
         +String petName
+        +Date dueDate
         +markComplete()
+        +nextOccurrence()
     }
 
     class Priority {
@@ -40,6 +42,7 @@ classDiagram
         +createTask()
         +editTask()
         +removeTask()
+        +completeTask()
     }
 
     class Scheduler {
@@ -52,6 +55,7 @@ classDiagram
         +generateExplanationOfPlan()
         +sortByTime()
         +filterTasks()
+        +markTaskComplete()
     }
 
     Pet "1" --> "*" Task : has

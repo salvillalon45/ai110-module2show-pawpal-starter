@@ -1,6 +1,7 @@
 """PawPal+ logic layer: backend classes for tasks, pets, owners, and scheduling."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import date, timedelta
 from enum import Enum, IntEnum
 from typing import Dict, List, Optional, Tuple
 
@@ -31,6 +32,7 @@ class Task:
     frequency: Frequency = Frequency.DAILY
     completion_status: bool = False
     pet_name: str = ""  # set by Pet.create_task; don't pass it yourself
+    due_date: date = field(default_factory=date.today)  # day this task is due; defaults to today
 
     def __post_init__(self) -> None:
         """Validate duration and preferred_time, and coerce priority and frequency to enums."""
@@ -47,6 +49,23 @@ class Task:
         """Mark this task as done so the scheduler skips it."""
         self.completion_status = True
 
+    def next_occurrence(self) -> Optional["Task"]:
+        """Return an incomplete copy due on the next occurrence, or None for ONCE tasks.
+
+        Daily tasks move forward 1 day and weekly tasks 7 days, counted from this
+        task's due_date (not today), so finishing a task late doesn't skip a day.
+        """
+        if self.frequency == Frequency.DAILY:
+            step = timedelta(days=1)
+        elif self.frequency == Frequency.WEEKLY:
+            step = timedelta(weeks=1)
+        else:
+            return None
+        # pet_name is cleared so Pet.create_task can attach the copy
+        return replace(
+            self, completion_status=False, pet_name="", due_date=self.due_date + step
+        )
+
 
 @dataclass
 class Pet:
@@ -55,13 +74,33 @@ class Pet:
     tasks: List[Task] = field(default_factory=list)
 
     def create_task(self, task: Task) -> None:
-        """Attach a task to this pet. Task names must be unique per pet."""
+        """Attach a task to this pet. Incomplete task names must be unique per pet.
+
+        Completed tasks are kept as history, so a new task may reuse their name
+        (this is how recurring tasks get their next occurrence).
+        """
         if task.pet_name:
             raise ValueError(f"task {task.name!r} already belongs to {task.pet_name!r}")
-        if any(t.name == task.name for t in self.tasks):
+        if any(t.name == task.name and not t.completion_status for t in self.tasks):
             raise ValueError(f"{self.name} already has a task named {task.name!r}")
         task.pet_name = self.name
         self.tasks.append(task)
+
+    def complete_task(self, task_name: str) -> Optional[Task]:
+        """Mark the named task complete and, if it recurs, add its next occurrence.
+
+        Targets the pet's incomplete task with that name, so completing "walk" twice
+        completes today's walk and then the next day's. Returns the newly created
+        task, or None if the task doesn't recur or only completed copies remain.
+        """
+        task = self._find_task(task_name)
+        if task.completion_status:
+            return None
+        task.mark_complete()
+        next_task = task.next_occurrence()
+        if next_task is not None:
+            self.create_task(next_task)
+        return next_task
 
     def edit_task(self, task_name: str, **changes) -> None:
         """Update fields on the task with the given name."""
@@ -79,11 +118,17 @@ class Pet:
         self.tasks.remove(self._find_task(task_name))
 
     def _find_task(self, task_name: str) -> Task:
-        """Return the task with the given name, or raise KeyError if there isn't one."""
-        for task in self.tasks:
-            if task.name == task_name:
+        """Return the task with the given name, or raise KeyError if there isn't one.
+
+        Prefers the incomplete task when a completed one shares the name.
+        """
+        matches = [t for t in self.tasks if t.name == task_name]
+        if not matches:
+            raise KeyError(f"no task named {task_name!r}")
+        for task in matches:
+            if not task.completion_status:
                 return task
-        raise KeyError(f"no task named {task_name!r}")
+        return matches[0]
 
 
 @dataclass
@@ -142,6 +187,16 @@ class Scheduler:
             key=lambda t: (TIME_BLOCKS.index(t.preferred_time), t.priority, t.duration)
         )
         return tasks
+
+    def mark_task_complete(self, pet_name: str, task_name: str) -> Optional[Task]:
+        """Complete a pet's task; recurring tasks get their next occurrence automatically.
+
+        Returns the newly created task (or None). Raises KeyError for an unknown pet or task.
+        """
+        for pet in self.owner.pets:
+            if pet.name == pet_name:
+                return pet.complete_task(task_name)
+        raise KeyError(f"no pet named {pet_name!r}")
 
     def filter_tasks(
         self, pet_name: Optional[str] = None, completed: Optional[bool] = None
