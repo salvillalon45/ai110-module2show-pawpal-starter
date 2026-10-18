@@ -127,6 +127,22 @@ class Scheduler:
         self.skipped_tasks: Dict[Tuple[str, str], str] = {}  # (pet, task) -> reason skipped
         self.placement_reasons: Dict[Tuple[str, str], str] = {}  # (pet, task) -> why it went where it did
 
+    def sort_by_time(self) -> List[Task]:
+        """
+        Return incomplete tasks ordered by preferred time block, then highest priority
+        then shortest duration first.
+
+        Ties break on priority (HIGH first). Doesn't modify the plan or any task.
+        """
+        tasks = []
+        for t in self.owner.get_all_tasks():
+            if not t.completion_status:
+                tasks.append(t)
+        tasks.sort(
+            key=lambda t: (TIME_BLOCKS.index(t.preferred_time), t.priority, t.duration)
+        )
+        return tasks
+
     def generate_daily_plan(self) -> None:
         """Build self.plan from the owner's incomplete tasks.
 
