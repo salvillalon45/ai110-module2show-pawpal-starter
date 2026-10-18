@@ -1,35 +1,58 @@
 classDiagram
     class Owner {
         +String name
-        +Pet pet
-        +List~Task~ tasks
+        +List~Pet~ pets 
         +Dict~String,int~ constraints
-        +createTask()
-        +editTask()
-    }
-
-    class Pet {
-        +String name
+        +addPet()
+        +getAllTasks()
     }
 
     class Task {
         +String name
         +String description
         +int duration
-        +int priority
+        +Priority priority
         +String preferredTime
+        +Frequency frequency
         +bool completionStatus
+        +String petName
+        +markComplete()
+    }
+
+    class Priority {
+        <<enumeration>>
+        HIGH
+        MEDIUM
+        LOW
+    }
+
+    class Frequency {
+        <<enumeration>>
+        ONCE
+        DAILY
+        WEEKLY
+    }
+
+    class Pet {
+        +String name
+        +List~Task~ tasks
+        +createTask()
+        +editTask()
+        +removeTask()
     }
 
     class Scheduler {
         +Owner owner
         +Dict~String,List~Task~~ plan
         +String explanationOfPlan
-        +Dict~String,String~ skippedTasks
+        +Dict~Tuple~String,String~,String~ skippedTasks
+        +Dict~Tuple~String,String~,String~ placementReasons
         +generateDailyPlan()
         +generateExplanationOfPlan()
     }
 
-    Owner "1" --> "1" Pet : has
-    Owner "1" --> "*" Task : has
+    Pet "1" --> "*" Task : has
+    Task --> Priority
+    Task --> Frequency
+    Owner "1" --> "*" Pet : has
     Scheduler "1" --> "1" Owner : reads from

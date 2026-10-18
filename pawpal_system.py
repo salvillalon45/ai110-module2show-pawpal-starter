@@ -1,46 +1,210 @@
 """PawPal+ logic layer: backend classes for tasks, pets, owners, and scheduling."""
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from enum import Enum, IntEnum
+from typing import Dict, List, Tuple
 
 TIME_BLOCKS = ("morning", "afternoon", "evening")
 
-@dataclass
-class Pet:
-    name: str
+
+class Priority(IntEnum):
+    """Lower number = more important."""
+    HIGH = 1
+    MEDIUM = 2
+    LOW = 3
+
+
+class Frequency(str, Enum):
+    """How often a task recurs."""
+    ONCE = "once"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
 
 @dataclass
 class Task:
     name: str
     description: str
-    duration: int  # minutes
-    priority: int  # 1, 2, 3 (document which number means high)
-    preferred_time: str  # one of TIME_BLOCKS
+    duration: int  # minutes, must be > 0
+    priority: Priority  # Priority.HIGH (1) is scheduled first
+    preferred_time: str  # one of TIME_BLOCKS; soft preference, scheduler may fall back
+    frequency: Frequency = Frequency.DAILY
     completion_status: bool = False
+    pet_name: str = ""  # set by Pet.create_task; don't pass it yourself
+
+    def __post_init__(self) -> None:
+        """Validate duration and preferred_time, and coerce priority and frequency to enums."""
+        if self.duration <= 0:
+            raise ValueError(f"duration must be > 0, got {self.duration}")
+        if self.preferred_time not in TIME_BLOCKS:
+            raise ValueError(
+                f"preferred_time must be one of {TIME_BLOCKS}, got {self.preferred_time!r}"
+            )
+        self.priority = Priority(self.priority)
+        self.frequency = Frequency(self.frequency)
+
+    def mark_complete(self) -> None:
+        """Mark this task as done so the scheduler skips it."""
+        self.completion_status = True
+
+
+@dataclass
+class Pet:
+    name: str
+    tasks: List[Task] = field(default_factory=list)
+
+    def create_task(self, task: Task) -> None:
+        """Attach a task to this pet. Task names must be unique per pet."""
+        if task.pet_name:
+            raise ValueError(f"task {task.name!r} already belongs to {task.pet_name!r}")
+        if any(t.name == task.name for t in self.tasks):
+            raise ValueError(f"{self.name} already has a task named {task.name!r}")
+        task.pet_name = self.name
+        self.tasks.append(task)
+
+    def edit_task(self, task_name: str, **changes) -> None:
+        """Update fields on the task with the given name."""
+        if "pet_name" in changes:
+            raise ValueError("pet_name is set by create_task and can't be edited")
+        task = self._find_task(task_name)
+        for key, value in changes.items():
+            if not hasattr(task, key):
+                raise AttributeError(f"Task has no field {key!r}")
+            setattr(task, key, value)
+        task.__post_init__()  # re-validate
+
+    def remove_task(self, task_name: str) -> None:
+        """Delete the task with the given name from this pet."""
+        self.tasks.remove(self._find_task(task_name))
+
+    def _find_task(self, task_name: str) -> Task:
+        """Return the task with the given name, or raise KeyError if there isn't one."""
+        for task in self.tasks:
+            if task.name == task_name:
+                return task
+        raise KeyError(f"no task named {task_name!r}")
+
 
 @dataclass
 class Owner:
     name: str
-    pet: Optional[Pet] = None
-    tasks: List[Task] = field(default_factory=list)
+    pets: List[Pet] = field(default_factory=list)
     # available minutes per time block, e.g. {"morning": 120, "afternoon": 0, "evening": 90}
-    constraints: Dict[str, int] = field(default_factory=dict)
+    constraints: Dict[str, int] = field(
+        default_factory=lambda: {block: 0 for block in TIME_BLOCKS}
+    )
 
-    def create_task(self, task: Task) -> None:
-        pass
+    def __post_init__(self) -> None:
+        """Reject unknown time blocks and default any missing blocks to 0 minutes."""
+        unknown =set(self.constraints) - set(TIME_BLOCKS)
+        if unknown:
+            raise ValueError(f"unknown time blocks in constraints: {sorted(unknown)}")
+        # blocks the caller left out have no available time
+        for block in TIME_BLOCKS:
+            self.constraints.setdefault(block, 0)
 
-    def edit_task(self, task_name: str, **changes) -> None:
-        pass
+    def add_pet(self, pet: Pet) -> None:
+        """Add a pet to this owner; pet names must be unique."""
+        if any(p.name == pet.name for p in self.pets):
+            raise ValueError(f"a pet named {pet.name!r} already exists")
+        self.pets.append(pet)
+
+    def get_all_tasks(self) -> List[Task]:
+        """Every task across all of the owner's pets."""
+        result = []
+        for pet in self.pets:
+            for task in pet.tasks:
+                result.append(task)
+        return result
 
 class Scheduler:
     def __init__(self, owner: Owner):
+        """Create a scheduler for the given owner with an empty plan."""
         self.owner = owner
         self.plan: Dict[str, List[Task]] = {block: [] for block in TIME_BLOCKS}
         self.explanation_of_plan: str = ""
-        self.skipped_tasks: Dict[str, str] = {}  # task name -> reason skipped
+        self.skipped_tasks: Dict[Tuple[str, str], str] = {}  # (pet, task) -> reason skipped
+        self.placement_reasons: Dict[Tuple[str, str], str] = {}  # (pet, task) -> why it went where it did
 
     def generate_daily_plan(self) -> None:
-        pass
+        """Build self.plan from the owner's incomplete tasks.
+
+        Intended approach:
+        - Reset plan, skipped_tasks and placement_reasons first (safe to re-run).
+        - Work from a copy of owner.constraints; never mutate the owner's data.
+        - Sort incomplete tasks by priority, then duration.
+        - Try preferred_time first, then fall back to other blocks.
+        - Skip (with a reason) tasks longer than every block or that fit nowhere.
+        """
+        self.plan = {block: [] for block in TIME_BLOCKS}
+        self.skipped_tasks = {}
+        self.placement_reasons = {}
+
+        remaining = dict(self.owner.constraints)  # copy; owner's data stays untouched
+        longest_block = max(remaining.values(), default=0)
+
+        tasks = []
+        for t in self.owner.get_all_tasks():
+            if not t.completion_status:
+                tasks.append(t)
+        tasks.sort(key=lambda t: (t.priority, t.duration))
+
+        for task in tasks:
+            key = (task.pet_name, task.name)
+
+            if task.duration > longest_block:
+                self.skipped_tasks[key] = (
+                    f"{task.duration} min is longer than any available time block "
+                    f"(longest is {longest_block} min)"
+                )
+                continue
+
+            # preferred block first, then the others in their normal order
+            order = [task.preferred_time] + [
+                b for b in TIME_BLOCKS if b != task.preferred_time
+            ]
+            for block in order:
+                if task.duration <= remaining[block]:
+                    self.plan[block].append(task)
+                    remaining[block] -= task.duration
+                    if block == task.preferred_time:
+                        self.placement_reasons[key] = (
+                            f"placed in preferred block '{block}' "
+                            f"({task.priority.name} priority)"
+                        )
+                    else:
+                        self.placement_reasons[key] = (
+                            f"preferred '{task.preferred_time}' was full; "
+                            f"moved to '{block}' ({task.priority.name} priority)"
+                        )
+                    break
+            else:
+                self.skipped_tasks[key] = (
+                    f"no block has {task.duration} min left "
+                    f"(remaining: {remaining})"
+                )
 
     def generate_explanation_of_plan(self) -> None:
-        pass
+        """Format placement_reasons and skipped_tasks into explanation_of_plan."""
+        lines = []
+
+        for block in TIME_BLOCKS:
+            tasks = self.plan[block]
+            used = sum(t.duration for t in tasks)
+            available = self.owner.constraints[block]
+            lines.append(f"{block.capitalize()} ({used}/{available} min used):")
+            if not tasks:
+                lines.append("  (nothing scheduled)")
+            for task in tasks:
+                reason = self.placement_reasons[(task.pet_name, task.name)]
+                lines.append(
+                    f"  - {task.pet_name}: {task.name} ({task.duration} min) - {reason}"
+                )
+
+        if self.skipped_tasks:
+            lines.append("")
+            lines.append("Skipped:")
+            for (pet_name, task_name), reason in self.skipped_tasks.items():
+                lines.append(f"  - {pet_name}: {task_name} - {reason}")
+
+        self.explanation_of_plan = "\n".join(lines)

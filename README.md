@@ -42,16 +42,48 @@ pip install -r requirements.txt
 6. Connect your logic to the Streamlit UI in `app.py`.
 7. Refine UML so it matches what you actually built.
 
+## 🛠️ Implementation Summary
+
+The logic layer lives in `pawpal_system.py`; `main.py` is a CLI demo that builds sample data and prints a plan.
+
+**How the classes fit together**
+
+- `Task` is a single care item: name, duration (minutes), `Priority`, a `preferred_time` block, a `Frequency`, and a completion flag. It validates its own input and has `mark_complete()`.
+- `Pet` owns a list of tasks. Tasks are added through `Pet.create_task`, which stamps the task with the pet's name and keeps task names unique per pet. It also includes the functionality to edit and remove tasks from a Pet.
+- `Owner` owns the pets and the time constraints: the minutes available in each block (`morning`, `afternoon`, `evening`). `Owner.get_all_tasks()` flattens every pet's tasks into one list.
+- `Scheduler` takes an `Owner` and produces the plan. It reads from the owner but never changes the owner's data.
+
+**How a plan is built**
+
+1. `generate_daily_plan()` collects the owner's incomplete tasks and sorts them by priority, then by duration.
+2. It works from a copy of the owner's constraints. For each task it tries the preferred block first, then the remaining blocks in order, and subtracts the task's duration from the first block with enough time left.
+3. A task is skipped, with a recorded reason, if it is longer than every block or if no block has enough time left.
+4. Each placement or skip is recorded under a `(pet name, task name)` key in `placement_reasons` or `skipped_tasks`.
+5. `generate_explanation_of_plan()` turns those records into the readable text stored in `explanation_of_plan`.
+
+Running `generate_daily_plan()` again rebuilds the plan from scratch, so it is safe to call after editing tasks.
+
 ## 🖥️ Sample Output
 
 Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
 
-```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+```python
+(.venv) ➜  codepath/codepath-ai/ai110-module2show-pawpal-starter git:(main) ✗ python3 main.py
+Morning (55/60 min used):
+  - Rex: prep meal (20 min) - placed in preferred block 'morning' (HIGH priority)
+  - Buddy: prep meal (20 min) - placed in preferred block 'morning' (HIGH priority)
+  - Buddy: nail trim (15 min) - placed in preferred block 'morning' (MEDIUM priority)
+Afternoon (0/0 min used):
+  (nothing scheduled)
+Evening (60/90 min used):
+  - Rex: walk (30 min) - preferred 'morning' was full; moved to 'evening' (HIGH priority)
+  - Buddy: walk (30 min) - preferred 'morning' was full; moved to 'evening' (HIGH priority)
+
+Skipped:
+  - Rex: bath - 120 min is longer than any available time block (longest is 90 min)
+  - Buddy: full groom - 150 min is longer than any available time block (longest is 90 min)
+  - Rex: play fetch - no block has 40 min left (remaining: {'morning': 5, 'afternoon': 0, 'evening': 30})
+(.venv) ➜  codepath/codepath-ai/ai110-module2show-pawpal-starter git:(main) ✗ 
 ```
 
 ## 🧪 Testing PawPal+
