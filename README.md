@@ -104,14 +104,12 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `sort_by_time` | Return incomplete tasks ordered by _preferred time block_ (morning afternoon, evening), then _highest priority_ first, then _shortest duration_ first. Tasks in the same block with the same priority are ordered by duration. Doesn't modify the plan or any task. |
+| Filtering | `filter_tasks(self, pet_name: Optional[str] = None, completed: Optional[bool] = None)` | Return the owner's tasks matching the given filters. `pet_name`: only tasks belonging to that pet (None = all pets). `completed`: True = only finished tasks, False = only unfinished tasks (None = both). Filters combine, so both can be given at once. |
+| Conflict handling | `detect_conflicts` | Return a warning message for every pair of overlapping timed tasks. Only incomplete tasks with a `start_time` are checked, and only tasks due on the same date can conflict. Two tasks overlap when each starts before the other ends (back-to-back tasks don't count). Pairs can belong to the same pet or different pets. Never raises; an empty list means no conflicts. |
+| Recurring tasks | `next_occurrence` | Return an incomplete copy due on the next occurrence, or `None` for `ONCE` tasks. Daily tasks move forward 1 day and weekly tasks 7 days, counted from this task's `due_date` (not today), so finishing a task late doesn't skip a day. |
 
 ## 📸 Demo Walkthrough
 
