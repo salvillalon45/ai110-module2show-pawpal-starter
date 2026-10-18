@@ -17,8 +17,10 @@ classDiagram
         +bool completionStatus
         +String petName
         +Date dueDate
+        +String startTime
         +markComplete()
         +nextOccurrence()
+        +startMinutes()
     }
 
     class Priority {
@@ -56,6 +58,7 @@ classDiagram
         +sortByTime()
         +filterTasks()
         +markTaskComplete()
+        +detectConflicts()
     }
 
     Pet "1" --> "*" Task : has

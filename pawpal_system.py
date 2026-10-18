@@ -1,8 +1,9 @@
 """PawPal+ logic layer: backend classes for tasks, pets, owners, and scheduling."""
 
 from dataclasses import dataclass, field, replace
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from enum import Enum, IntEnum
+from itertools import combinations
 from typing import Dict, List, Optional, Tuple
 
 TIME_BLOCKS = ("morning", "afternoon", "evening")
@@ -33,17 +34,35 @@ class Task:
     completion_status: bool = False
     pet_name: str = ""  # set by Pet.create_task; don't pass it yourself
     due_date: date = field(default_factory=date.today)  # day this task is due; defaults to today
+    start_time: Optional[str] = None  # optional "HH:MM" (24h); used for conflict detection
 
     def __post_init__(self) -> None:
-        """Validate duration and preferred_time, and coerce priority and frequency to enums."""
+        """Validate duration, preferred_time and start_time, and coerce priority and frequency to enums."""
         if self.duration <= 0:
             raise ValueError(f"duration must be > 0, got {self.duration}")
+        if self.start_time is not None:
+            try:
+                if len(self.start_time) != 5:  # strptime would also accept "8:30"
+                    raise ValueError
+                datetime.strptime(self.start_time, "%H:%M")
+            except ValueError:
+                raise ValueError(
+                    f"start_time must be zero-padded 24h 'HH:MM', got {self.start_time!r}"
+                ) from None
         if self.preferred_time not in TIME_BLOCKS:
             raise ValueError(
                 f"preferred_time must be one of {TIME_BLOCKS}, got {self.preferred_time!r}"
             )
         self.priority = Priority(self.priority)
         self.frequency = Frequency(self.frequency)
+
+    @property
+    def start_minutes(self) -> Optional[int]:
+        """start_time as minutes after midnight (e.g. "08:30" -> 510), or None if unset."""
+        if self.start_time is None:
+            return None
+        hours, minutes = self.start_time.split(":")
+        return int(hours) * 60 + int(minutes)
 
     def mark_complete(self) -> None:
         """Mark this task as done so the scheduler skips it."""
@@ -215,6 +234,43 @@ class Scheduler:
                 continue
             tasks.append(t)
         return tasks
+
+    def detect_conflicts(self) -> List[str]:
+        """Return a warning message for every pair of overlapping timed tasks.
+
+        Only incomplete tasks with a start_time are checked, and only tasks due on
+        the same date can conflict. Two tasks overlap when each starts before the
+        other ends (back-to-back tasks don't count). Pairs can belong to the same
+        pet or different pets. Never raises; an empty list means no conflicts.
+        """
+        timed = [
+            t for t in self.filter_tasks(completed=False) if t.start_minutes is not None
+        ]
+        timed.sort(key=lambda t: (t.due_date, t.start_minutes))
+
+        warnings = []
+        for a, b in combinations(timed, 2):
+            if a.due_date != b.due_date:
+                continue
+            if a.start_minutes < b.start_minutes + b.duration and (
+                b.start_minutes < a.start_minutes + a.duration
+            ):
+                whose = (
+                    f"for {a.pet_name}" if a.pet_name == b.pet_name
+                    else f"between {a.pet_name} and {b.pet_name}"
+                )
+                warnings.append(
+                    f"Warning: conflict {whose} on {a.due_date}: "
+                    f"'{a.name}' ({self._time_range(a)}) overlaps "
+                    f"'{b.name}' ({self._time_range(b)})"
+                )
+        return warnings
+
+    @staticmethod
+    def _time_range(task: Task) -> str:
+        """Format a timed task's span as 'HH:MM-HH:MM'."""
+        end = task.start_minutes + task.duration
+        return f"{task.start_time}-{end // 60 % 24:02d}:{end % 60:02d}"
 
     def generate_daily_plan(self) -> None:
         """Build self.plan from the owner's incomplete tasks.

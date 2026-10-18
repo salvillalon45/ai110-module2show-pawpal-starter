@@ -135,6 +135,7 @@ For the Pet class I added a new field called species since I noticed the UI had 
 - For the `Scheduler` class I added a new method called `sort_by_time` that return incomplete tasks ordered by preferred time block, then highest priority, then shortest duration first. 
 - For the `Scheduler` class I added a new method called `filter_tasks` that returns the owner's tasks matching the given filters.
 - For the `Scheduler` class I added new methods called `completeTask()`, `markTaskComplete()`, `nextOccurrence()` 
+- `Task` now has `startTime` and `startMinutes()`
 ---
 
 ## 2. Scheduling Logic and Tradeoffs

@@ -186,3 +186,34 @@ for name in ("walk", "bath", "vet visit"):
         print(f"\nCompleted {name!r} -> no next occurrence ({'one-time task'})")
 show_with_dates("After completing all three:", pip.tasks)
 show_with_dates("Still to do (incomplete):", recurring.filter_tasks(completed=False))
+
+
+# --- Conflict detection demo ---
+# detect_conflicts() returns warning strings instead of raising, so the program keeps running.
+today = date.today()
+
+luna = Pet("Luna", "dog")
+milo = Pet("Milo", "cat")
+luna.create_task(Task("walk", "morning walk", 30, Priority.HIGH, "morning", start_time="08:00", due_date=today))
+luna.create_task(Task("feed", "breakfast", 10, Priority.HIGH, "morning", start_time="08:00", due_date=today))  # same time as walk, same pet
+milo.create_task(Task("vet call", "phone the vet", 20, Priority.MEDIUM, "morning", start_time="08:15", due_date=today))  # overlaps walk, different pet
+milo.create_task(Task("play", "laser pointer", 15, Priority.LOW, "evening", start_time="18:00", due_date=today))  # no conflict
+milo.create_task(Task("brush", "brush coat", 10, Priority.LOW, "evening", due_date=today))  # no start_time, never checked
+
+conflict_scheduler = Scheduler(Owner("Casey", [luna, milo], {"morning": 120, "afternoon": 0, "evening": 60}))
+
+print("\nChecking for conflicts:")
+warnings = conflict_scheduler.detect_conflicts()
+if warnings:
+    for w in warnings:
+        print(f"  {w}")
+else:
+    print("  No conflicts found.")
+
+# Resolve the conflicts by moving tasks, then check again.
+luna.edit_task("feed", start_time="08:30")  # back-to-back with walk, not overlapping
+milo.edit_task("vet call", start_time="09:00")
+print("\nAfter rescheduling feed to 08:30 and vet call to 09:00:")
+warnings = conflict_scheduler.detect_conflicts()
+for w in warnings or ["No conflicts found."]:
+    print(f"  {w}")
