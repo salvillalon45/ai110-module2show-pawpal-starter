@@ -128,18 +128,21 @@ def show(title, tasks):
         print("  (none)")
     for t in tasks:
         status = "done" if t.completion_status else "todo"
+        start = t.start_time or "no start time"
         print(
             f"  - [{status}] {t.pet_name}: {t.name} "
-            f"({t.preferred_time}, {t.priority.name}, {t.duration} min)"
+            f"({t.preferred_time}, {start}, {t.priority.name}, {t.duration} min)"
         )
 
 
+# Some tasks have a start_time and some don't, so the sort shows timed tasks
+# ordered by clock time within a block, with untimed tasks after them.
 whiskers = Pet("Whiskers", "cat")
-whiskers.create_task(Task("play", "feather wand play", 15, Priority.LOW, "evening"))
+whiskers.create_task(Task("play", "feather wand play", 15, Priority.LOW, "evening", start_time="18:00"))
 whiskers.create_task(Task("litter box", "scoop litter", 10, Priority.MEDIUM, "afternoon"))
-whiskers.create_task(Task("breakfast", "wet food", 5, Priority.HIGH, "morning"))
-whiskers.create_task(Task("medicine", "ear drops", 5, Priority.HIGH, "evening"))
-whiskers.create_task(Task("brush fur", "brush coat", 20, Priority.LOW, "morning"))
+whiskers.create_task(Task("breakfast", "wet food", 5, Priority.HIGH, "morning", start_time="07:30"))
+whiskers.create_task(Task("medicine", "ear drops", 5, Priority.HIGH, "evening", start_time="19:00"))
+whiskers.create_task(Task("brush fur", "brush coat", 20, Priority.LOW, "morning", start_time="07:00"))
 whiskers.create_task(Task("vet note", "write up vet notes", 10, Priority.LOW, "afternoon"))
 whiskers.tasks[-1].mark_complete()
 
@@ -151,7 +154,7 @@ demo_owner.pets[1].tasks[0].mark_complete()
 demo = Scheduler(demo_owner)
 
 show("As added (unsorted):", demo_owner.get_all_tasks())
-show("Sorted by time block, priority, duration (incomplete only):", demo.sort_by_time())
+show("Sorted by time block, start time, priority, duration (incomplete only):", demo.sort_by_time())
 show("Filter: incomplete tasks", demo.filter_tasks(completed=False))
 show("Filter: completed tasks", demo.filter_tasks(completed=True))
 show("Filter: Whiskers' tasks", demo.filter_tasks(pet_name="Whiskers"))

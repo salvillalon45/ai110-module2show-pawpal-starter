@@ -194,9 +194,10 @@ class Scheduler:
     def sort_by_time(self) -> List[Task]:
         """
         Return incomplete tasks ordered by preferred time block (morning, afternoon,
-        evening), then highest priority first, then shortest duration first.
+        evening), then start_time, then highest priority, then shortest duration.
 
-        Tasks in the same block with the same priority are ordered by duration.
+        Within a block, tasks with a start_time come first (earliest first), followed
+        by untimed tasks. Ties fall back to priority, then duration.
         Doesn't modify the plan or any task.
         """
         tasks = []
@@ -204,7 +205,13 @@ class Scheduler:
             if not t.completion_status:
                 tasks.append(t)
         tasks.sort(
-            key=lambda t: (TIME_BLOCKS.index(t.preferred_time), t.priority, t.duration)
+            key=lambda t: (
+                TIME_BLOCKS.index(t.preferred_time),
+                t.start_minutes is None,
+                t.start_minutes or 0,
+                t.priority,
+                t.duration,
+            )
         )
         return tasks
 
