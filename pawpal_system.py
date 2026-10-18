@@ -51,6 +51,7 @@ class Task:
 @dataclass
 class Pet:
     name: str
+    species: str = "other"  # e.g. "dog", "cat", "other"
     tasks: List[Task] = field(default_factory=list)
 
     def create_task(self, task: Task) -> None:

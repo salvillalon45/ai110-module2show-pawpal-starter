@@ -128,6 +128,9 @@ Once I started this phase, the assigment suggested some edits that we should. I 
     - A Scheduler reads from one Owner
 
 
+### After starting Phase 3: UI and Backend Integration
+For the Pet class I added a new field called species since I noticed the UI had it.
+
 ---
 
 ## 2. Scheduling Logic and Tradeoffs
