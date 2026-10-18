@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 TIME_BLOCKS = ("morning", "afternoon", "evening")
 
@@ -141,6 +141,24 @@ class Scheduler:
         tasks.sort(
             key=lambda t: (TIME_BLOCKS.index(t.preferred_time), t.priority, t.duration)
         )
+        return tasks
+
+    def filter_tasks(
+        self, pet_name: Optional[str] = None, completed: Optional[bool] = None
+    ) -> List[Task]:
+        """Return the owner's tasks matching the given filters.
+
+        pet_name: only tasks belonging to that pet (None = all pets).
+        completed: True = only finished tasks, False = only unfinished tasks
+            (None = both). Filters combine, so both can be given at once.
+        """
+        tasks = []
+        for t in self.owner.get_all_tasks():
+            if pet_name is not None and t.pet_name != pet_name:
+                continue
+            if completed is not None and t.completion_status != completed:
+                continue
+            tasks.append(t)
         return tasks
 
     def generate_daily_plan(self) -> None:

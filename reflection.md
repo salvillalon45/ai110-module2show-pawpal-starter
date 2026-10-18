@@ -132,7 +132,8 @@ Once I started this phase, the assigment suggested some edits that we should. I 
 For the Pet class I added a new field called species since I noticed the UI had it.
 
 ### After starting Phase 4: Algorithmic Layer
-For the Scheduler class I added a new method called sort_by_time that Return incomplete tasks ordered by preferred time block, then highest priority, then shortest duration first. 
+- For the Scheduler class I added a new method called `sort_by_time` that return incomplete tasks ordered by preferred time block, then highest priority, then shortest duration first. 
+- For the Scheduler class I added a new method called `filter_tasks` that returns the owner's tasks matching the given filters.
 
 ---
 
