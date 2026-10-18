@@ -193,10 +193,11 @@ class Scheduler:
 
     def sort_by_time(self) -> List[Task]:
         """
-        Return incomplete tasks ordered by preferred time block, then highest priority
-        then shortest duration first.
+        Return incomplete tasks ordered by preferred time block (morning, afternoon,
+        evening), then highest priority first, then shortest duration first.
 
-        Ties break on priority (HIGH first). Doesn't modify the plan or any task.
+        Tasks in the same block with the same priority are ordered by duration.
+        Doesn't modify the plan or any task.
         """
         tasks = []
         for t in self.owner.get_all_tasks():
