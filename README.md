@@ -88,18 +88,33 @@ Skipped:
 
 ## 🧪 Testing PawPal+
 
-```bash
-# Run the full test suite:
-pytest
+### Run the full test suite:
+`python3 -m pytest` or `python -m pytest`
 
-# Run with coverage:
-pytest --cov
-```
+### Run with coverage:
+`pytest --cov`
+
+
+The unit tests cover Sorting Correctness, Recurrence Logic, and Conflict Detection.
+
+### Confidence Level 
+5 stars based on the test output below.
 
 Sample test output:
+```bash
+(.venv) ➜  codepath/codepath-ai/ai110-module2show-pawpal-starter git:(main) python3 -m pytest
+========================================================= test session starts =========================================================
+platform darwin -- Python 3.14.7, pytest-9.1.1, pluggy-1.6.0
+rootdir: /Users/salvadorvillalonjr/Documents/pers/codepath/codepath-ai/ai110-module2show-pawpal-starter
+configfile: pytest.ini
+testpaths: tests
+plugins: anyio-4.15.1
+collected 25 items                                                                                                                    
 
-```
-# Paste your pytest output here
+tests/test_pawpal.py .........................                                                                                  [100%]
+
+========================================================= 25 passed in 0.02s ==========================================================
+(.venv) ➜  codepath/codepath-ai/ai110-module2show-pawpal-starter git:(main) ✗ 
 ```
 
 ## 📐 Smarter Scheduling
