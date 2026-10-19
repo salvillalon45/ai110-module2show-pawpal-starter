@@ -127,22 +127,37 @@ Once I started this phase, the assigment suggested some edits that we should. I 
 - Scheduler "1" --> "1" Owner : reads from
     - A Scheduler reads from one Owner
 
+**c. More updates to the design**
 
-### After starting Phase 3: UI and Backend Integration
-For the Pet class I added a new field called species since I noticed the UI had it.
+This section is the history of how the UML changed after the first design, in the order the changes happened.
 
-### After starting Phase 4: Algorithmic Layer
-- For the `Scheduler` class I added:
-    - `sort_by_time`
-    - `filter_tasks`
-    - `markTaskComplete()` 
-    - `detectConflicts()`
-- For the `Task` class I added:
-    - `markComplete()`
-    - `nextOccurrence()`
-    - `startMinutes()`
-- For the `Pet` class I added:
-    - `completeTask()`
+**Phase 4: Algorithmic Layer**
+- **Sorting.** `Scheduler.sort_by_time()` orders tasks by time block (morning, afternoon, evening), then priority, then shortest duration. I kept `duration` in minutes instead of switching to HH:MM, because the assignment's HH:MM idea is about a clock time, which `duration` is not. Later I changed it to also sort by `start_time` within a block, and to take an optional list of tasks so it can sort the output of `filter_tasks`.
+- **Filtering.** `Scheduler.filter_tasks(pet_name, completed)` is one method with two optional filters, so they can be combined, for example "Tom's unfinished tasks". `completed=True` returns finished tasks, `False` returns unfinished ones, and `None` means no filter on status.
+- **Recurring tasks.**
+    - `Task` got a `due_date` field, because "today + 1 day" needs a date to start from.
+    - `Task.next_occurrence()` builds the next copy, using `timedelta(days=1)` for daily and `timedelta(weeks=1)` for weekly. It counts from the task's own `due_date`, so finishing a task late doesn't skip a day.
+    - `Pet.complete_task()` marks the task done and attaches the next occurrence. `Scheduler.mark_task_complete()` finds the pet and calls it. The logic lives on `Pet` because a `Task` can't add itself to its pet's task list.
+    - Task names are now only unique among a pet's incomplete tasks. Before, the new "Walk" would have been refused while the completed "Walk" still existed. Completed tasks stay as history.
+- **Conflict detection.**
+    - `Task` got an optional `start_time` ("HH:MM") and a `start_minutes` property that converts it to minutes after midnight.
+    - `Scheduler.detect_conflicts()` returns a list of warning messages instead of raising an error. Two tasks conflict when their time ranges overlap on the same due date, for the same pet or different pets. Back-to-back tasks are not flagged, and tasks with no `start_time` are skipped.
+
+**Phase 6: UI Polish**
+- `generate_daily_plan()` takes an optional `plan_date`, so the plan only includes tasks due on or before that date. Without it, a recurring task's next occurrence (due tomorrow) showed up in today's plan.
+- The UI needed a way to set the owner's available minutes per time block, because without it every block defaulted to 0 and every task was skipped.
+- The UI also needed a way to remove a task, which uses `Pet.remove_task()`. I added it after I created a task that conflicted with another one and had no way to fix it.
+
+**UML relationships added at the end.** The first UML only showed ownership (`Owner` has `Pet`s, `Pet` has `Task`s, `Scheduler` reads from `Owner`). I added the interactions that were missing:
+- `Scheduler` plans `Task`s.
+- `Scheduler.markTaskComplete` delegates to `Pet.completeTask`.
+- `Pet.completeTask` creates the next `Task`, using `Task.nextOccurrence`, which creates a copy of the `Task`.
+- `Owner.getAllTasks` collects tasks from all of its pets. Tasks live on pets, so this is a dashed (derived) link instead of ownership.
+
+I also added parameters and return types to the methods, and a note that `Owner.constraints` keys and `Task.preferredTime` must come from `TIME_BLOCKS`.
+
+**Working style note.** During this work I told Claude Code that I prefer regular multi-line `for` loops and multi-line conditionals over one-line versions. I describe that in section 2b.
+
 ---
 
 ## 2. Scheduling Logic and Tradeoffs
@@ -150,7 +165,18 @@ For the Pet class I added a new field called species since I noticed the UI had 
 **a. Constraints and priorities**
 
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
+
+    - **Available time per time block.** The owner sets how many minutes they have in the morning, afternoon and evening (`Owner.constraints`). A task is only placed in a block if its duration fits in the minutes that block has left. A task longer than every block is skipped, and so is a task that fits nowhere. Each skipped task gets a reason.
+    - **Priority.** Tasks are sorted by `Priority` (HIGH, MEDIUM, LOW) and then by shortest duration, so high-priority tasks claim time first.
+    - **Preferred time of day.** Each task has a `preferred_time`. The scheduler tries that block first and falls back to the other blocks if it is full.
+    - **Completion status and due date.** Completed tasks are never planned. When a plan date is given, only tasks due on or before that date are planned, so a recurring task's next occurrence does not show up early.
+    - **Start times (warnings only).** An optional `start_time` is not used to place tasks. It is used to sort the task list and to warn about overlapping tasks with `detect_conflicts()`.
+
 - How did you decide which constraints mattered most?
+
+    - **Time came first because it is a hard limit.** The owner cannot do more than the minutes they have, so the scheduler never overfills a block.
+    - **Priority came second.** When time is tight, the important tasks, like meals and medicine, should win over nice-to-haves. Sorting by priority before placing anything means a LOW task can never take space a HIGH task needed. Shortest duration breaks ties because it lets more tasks fit.
+    - **Preferences came last because they are soft.** A task that cannot go in its preferred block is better moved to another block than dropped, so `preferred_time` is a preference and not a rule. The plan's explanation says when a task was moved and why, so the owner can see it.
 
 **b. Tradeoffs**
 
@@ -204,12 +230,60 @@ While working on this step I told Claude Code that I prefer regular multi-line `
 **a. What you tested**
 
 - What behaviors did you test?
+
+    I wrote 25 automated tests with pytest in `tests/test_pawpal.py`. They cover:
+    - **Basics (2 tests):** `mark_complete` changes a task's status, and adding a task to a pet increases its task count.
+    - **Sorting (8 tests):**
+        - Tasks come out in time-block order (morning, afternoon, evening).
+        - Ties break by priority and then duration.
+        - Within a block, tasks are ordered by `start_time`, with timed tasks before untimed ones.
+        - A start time never overrides block order.
+        - Sorting works across several pets.
+        - Completed tasks are skipped.
+        - No tasks gives an empty list.
+    - **Recurring tasks (7 tests):**
+        - Completing a daily task creates a task for the next day, and a weekly task creates one 7 days later.
+        - Completing a one-time task creates nothing.
+        - The next date counts from the task's `due_date`, not today.
+        - Dates roll over the end of a month.
+        - The original task is marked complete.
+        - The new task keeps the original's details.
+    - **Conflict detection (8 tests):**
+        - It flags the same start time for one pet and across pets, and it flags partial overlaps.
+        - It ignores back-to-back tasks, the same time on different days, completed tasks and tasks with no `start_time`.
+        - No tasks gives an empty list.
+
 - Why were these tests important?
+
+    - **They protect the logic the plan depends on.** Sorting, recurrence and conflict detection are the parts that are easy to get subtly wrong, and a mistake would not crash the program. It would just give the owner a wrong schedule.
+    - **Edge cases are where the bugs are.** Back-to-back tasks, month-end dates, and counting recurrence from `due_date` are all places where a "mostly right" version would pass a casual check. Testing them pinned the behavior down on purpose.
+    - **They let me change things safely.** I changed `sort_by_time` after the first version (adding start times and an optional task list), and the tests showed the earlier ordering rules still held.
 
 **b. Confidence**
 
 - How confident are you that your scheduler works correctly?
+
+    - **Very confident in sorting, recurring tasks and conflict detection.** All 25 tests pass, and they cover the normal cases and the tricky ones, like back-to-back tasks, month-end dates and counting recurrence from `due_date`.
+    - **Less confident in the parts without automated tests.** `generate_daily_plan` (priority order, falling back to another block, skipping tasks that do not fit, and the plan-date filter), `filter_tasks`, `mark_task_complete`, `Pet.remove_task`, the `start_time` validation and the Streamlit UI. I checked those by running `main.py` and trying the app by hand, which is not as reliable as a test.
+
 - What edge cases would you test next if you had more time?
+
+    - **Planning:**
+        - A HIGH task takes space before a LOW task, even when the LOW task was added first.
+        - A task falls back to another block when its preferred block is full.
+        - A task is skipped when it is longer than every block, and when it fits nowhere.
+        - Only tasks due on or before `plan_date` are planned.
+        - Running the plan twice gives the same result, and the owner's `constraints` are never changed.
+    - **Filtering and completing:**
+        - Combining `pet_name` and `completed` in `filter_tasks`.
+        - `mark_task_complete` with an unknown pet or task raises `KeyError`.
+        - Completing the same task twice.
+    - **Time handling:**
+        - `start_time` values like "8:30", "25:00" and "08:60" are rejected.
+        - A task that runs past midnight, such as 23:50 for 30 minutes. Its end time would wrap around in the conflict message.
+        - Three or more tasks that all overlap.
+        - Weekly recurrence across a year end and a leap day.
+    - **A known gap:** `generate_daily_plan` places tasks into time blocks but does not look at `start_time`, so a plan can put two tasks in a block whose start times conflict. Conflict detection warns about this, but the plan does not avoid it.
 
 ---
 
@@ -218,11 +292,29 @@ While working on this step I told Claude Code that I prefer regular multi-line `
 **a. What went well**
 
 - What part of this project are you most satisfied with?
+    - I am proud that I decided to go part by part. This helped me understand and not get lost when the LLM generated code. I felt that if I where to just give a big prompt or multiple questions then I would be more confused. I broke it down into parts which made it easier to follow along.
 
 **b. What you would improve**
 
 - If you had another iteration, what would you improve or redesign?
+    - I would love to spend more time in the scheduler. I feel that is it the biggest part of the app and I would love to have more time to dig in and really plan out the features. I feel this would benefit from splitting up the work into multiple parts as I felt there was a lot of complexity into the scheduler that needed more time to really appreciate it.
 
 **c. Key takeaway**
 
 - What is one important thing you learned about designing systems or working with AI on this project?
+    - This was my first time using LLM as a coding partner. I felt that I was following along and making the changes that we needed to complete the assignment. The important part I learned is to break down the problems part by part. If I were to give it a huge prompt, I felt the LLM would have made more errors than if you were doing it part by part. By breaking down the things to do, I felt the LLM to be more effective.
+
+**d. Which AI coding assistant features were most effective for building your scheduler?**
+- What really helped was the Claude Code knows which file you are working on. It also keeps a context and refers back to things that we had discussed.
+
+**e. Give one example of an AI suggestion you rejected or modified to keep your system design clean.**
+- For me to understand the code better, I did not like that Claude kept using one line for loops and one line conditionals. I prompted Claude to keep in mind to use regular for loops and multi-line conditionals. Claude updated `MEMORY.md` and now everytime it generate code it use a regular for loop and multi-line conditionals.
+
+**f. How did using separate chat sessions for different phases help you stay organized?**
+- I used to always use one chat, but I can now see the benefit of using multiple chat windows. This helps keep your work organized so that you start new chat for a new feature.
+
+**g. Summarize what you learned about being the "lead architect" when collaborating with powerful AI tools.**
+- This assignment truly made me feel like the Lead Architect! I was telling claude what to do and we worked together to create an app! This felt way faster than if I were to do it alone. 
+    - I learned about:
+        - Multiple chat windows to organize your work
+        - Breaking down the problem into smaller tasks so that Claude can be more effective

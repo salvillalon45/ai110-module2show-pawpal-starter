@@ -191,19 +191,21 @@ class Scheduler:
         self.skipped_tasks: Dict[Tuple[str, str], str] = {}  # (pet, task) -> reason skipped
         self.placement_reasons: Dict[Tuple[str, str], str] = {}  # (pet, task) -> why it went where it did
 
-    def sort_by_time(self) -> List[Task]:
+    def sort_by_time(self, tasks: Optional[List[Task]] = None) -> List[Task]:
         """
-        Return incomplete tasks ordered by preferred time block (morning, afternoon,
-        evening), then start_time, then highest priority, then shortest duration.
+        Return tasks ordered by preferred time block (morning, afternoon, evening),
+        then start_time, then highest priority, then shortest duration.
+
+        By default sorts the owner's incomplete tasks. Pass tasks (for example the
+        result of filter_tasks) to sort that list instead, whatever its status.
 
         Within a block, tasks with a start_time come first (earliest first), followed
         by untimed tasks. Ties fall back to priority, then duration.
-        Doesn't modify the plan or any task.
+        Doesn't modify the plan, any task, or the list passed in.
         """
-        tasks = []
-        for t in self.owner.get_all_tasks():
-            if not t.completion_status:
-                tasks.append(t)
+        if tasks is None:
+            tasks = self.filter_tasks(completed=False)
+        tasks = list(tasks)  # sort a copy so the caller's list keeps its order
         tasks.sort(
             key=lambda t: (
                 TIME_BLOCKS.index(t.preferred_time),
@@ -280,8 +282,12 @@ class Scheduler:
         end = task.start_minutes + task.duration
         return f"{task.start_time}-{end // 60 % 24:02d}:{end % 60:02d}"
 
-    def generate_daily_plan(self) -> None:
+    def generate_daily_plan(self, plan_date: Optional[date] = None) -> None:
         """Build self.plan from the owner's incomplete tasks.
+
+        plan_date: if given, only tasks due on or before that date are planned
+        (overdue tasks are included, future ones such as a recurring task's next
+        occurrence are left out). None plans every incomplete task.
 
         Intended approach:
         - Reset plan, skipped_tasks and placement_reasons first (safe to re-run).
@@ -299,8 +305,11 @@ class Scheduler:
 
         tasks = []
         for t in self.owner.get_all_tasks():
-            if not t.completion_status:
-                tasks.append(t)
+            if t.completion_status:
+                continue
+            if plan_date is not None and t.due_date > plan_date:
+                continue
+            tasks.append(t)
         tasks.sort(key=lambda t: (t.priority, t.duration))
 
         for task in tasks:
